@@ -8,8 +8,8 @@ from pygame.locals import *
 pygame.init()
 
 # Game constants
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 800
 FPS = 60
 
 # Area dimensions
@@ -77,32 +77,71 @@ class Player(pygame.sprite.Sprite):
         # Player doesn't move, but could add movement controls here
         pass
     
-    def shoot(self, current_time, all_sprites, swords):
+    def find_nearest_monster(self, monsters):
+        nearest_monster = None
+        min_distance = float('inf')
+        attack_line = SCREEN_HEIGHT - DEFENSE_HEIGHT - ATTACK_HEIGHT
+        
+        for monster in monsters:
+            # 只考虑已经进入攻防区域的怪物
+            if monster.rect.bottom >= attack_line:
+                # 计算与玩家的距离
+                dx = monster.rect.centerx - self.rect.centerx
+                dy = monster.rect.centery - self.rect.centery
+                distance = (dx * dx + dy * dy) ** 0.5
+                
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_monster = monster
+        
+        if nearest_monster:
+            print(f"Nearest monster at: {nearest_monster.rect.topleft}, Distance: {min_distance}")
+        else:
+            print("No monsters in attack area.")
+        
+        return nearest_monster
+    
+    def calculate_angle_to_target(self, target):
+        # 计算射击角度
+        dx = target.rect.centerx - self.rect.centerx
+        dy = target.rect.centery - self.rect.centery
+        angle = math.degrees(math.atan2(-dy, dx))  # 使用负dy因为pygame的y轴向下
+        return angle
+    
+    def shoot(self, current_time, all_sprites, swords, monsters):
         # Check if enough time has passed since last shot
         if current_time - self.last_shot > 1000 / self.fire_rate:
-            self.last_shot = current_time
+            # 寻找最近的怪物
+            nearest_monster = self.find_nearest_monster(monsters)
             
-            # Create sword based on type
-            for i in range(self.sword_count):
-                # Adjust angle for multiple swords
-                angle_offset = 0
-                if self.sword_count > 1:
-                    angle_offset = (i - (self.sword_count - 1) / 2) * 15
+            if nearest_monster:
+                self.last_shot = current_time
+                base_angle = self.calculate_angle_to_target(nearest_monster)
+                print(f"Shooting at angle: {base_angle}")
                 
-                new_sword = Sword(self.rect.centerx, self.rect.centery, 
-                                 self.sword_type, self.damage, self.sword_range, angle_offset)
-                all_sprites.add(new_sword)
-                swords.add(new_sword)
+                # Create sword based on type
+                for i in range(self.sword_count):
+                    # Adjust angle for multiple swords
+                    angle_offset = 0
+                    if self.sword_count > 1:
+                        angle_offset = (i - (self.sword_count - 1) / 2) * 15
+                    
+                    new_sword = Sword(self.rect.centerx, self.rect.centery, 
+                                     self.sword_type, self.damage, self.sword_range,
+                                     base_angle + angle_offset)
+                    all_sprites.add(new_sword)
+                    swords.add(new_sword)
+                    print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle + angle_offset}")
 
 # Sword class
 class Sword(pygame.sprite.Sprite):
-    def __init__(self, x, y, sword_type, damage, damage_range, angle_offset=0):
+    def __init__(self, x, y, sword_type, damage, damage_range, angle):
         super().__init__()
         self.sword_type = sword_type
         self.damage = damage
         self.damage_range = damage_range
-        self.angle = -90 + angle_offset  # Straight up with possible offset
-        self.speed = 10
+        self.angle = angle  # 直接使用计算好的角度
+        self.speed = 50
         
         # Create sword image based on type
         if sword_type == NORMAL_SWORD:
@@ -115,17 +154,20 @@ class Sword(pygame.sprite.Sprite):
             self.image = pygame.Surface((10, 30), pygame.SRCALPHA)
             pygame.draw.rect(self.image, ORANGE, (0, 0, 10, 30))
         
+        # 旋转飞剑图像以匹配射击角度
+        self.original_image = self.image
+        self.image = pygame.transform.rotate(self.original_image, -angle)
         self.rect = self.image.get_rect()
         self.rect.centerx = x
-        self.rect.bottom = y
+        self.rect.centery = y
         
         # Convert angle to radians for movement calculation
-        self.angle_rad = math.radians(self.angle)
+        self.angle_rad = math.radians(angle)
         
     def update(self):
         # Move sword based on angle
         self.rect.x += self.speed * math.cos(self.angle_rad)
-        self.rect.y += self.speed * math.sin(self.angle_rad)
+        self.rect.y -= self.speed * math.sin(self.angle_rad)  # 减去是因为pygame的y轴向下
         
         # Remove if off-screen
         if self.rect.bottom < 0 or self.rect.top > SCREEN_HEIGHT or \
@@ -169,16 +211,28 @@ class Monster(pygame.sprite.Sprite):
         # Flag for upgrade drop
         self.drops_upgrade = False
         
+        # Flag to check if monster is attacking
+        self.attacking = False
+        
     def update(self):
+        global armor
+        
+        # If monster is attacking, reduce armor
+        if self.attacking:
+            armor -= self.damage * 0.1  # Adjust the rate of damage as needed
+            if armor < 0:
+                armor = 0
+            return
+        
         # Move monster down
         self.y_float += self.speed
         self.rect.y = int(self.y_float)
         
         # Check if monster reached defense line
-        if self.rect.top >= SCREEN_HEIGHT - DEFENSE_HEIGHT:
-            global armor
-            armor -= self.damage
-            self.kill()
+        if self.rect.bottom >= SCREEN_HEIGHT - DEFENSE_HEIGHT:
+            self.attacking = True
+            self.y_float = SCREEN_HEIGHT - DEFENSE_HEIGHT  # Stop moving
+            self.rect.y = int(self.y_float)
 
 # Upgrade popup class
 class UpgradePopup:
@@ -445,8 +499,8 @@ while running:
             spawn_monster(all_sprites, monsters)
             monster_spawn_timer = current_time
         
-        # Auto-shoot
-        player.shoot(current_time, all_sprites, swords)
+        # Auto-shoot (修改这里，传入monsters参数)
+        player.shoot(current_time, all_sprites, swords, monsters)
         
         # Update all sprites
         all_sprites.update()
