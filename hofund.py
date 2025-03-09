@@ -27,7 +27,7 @@ CYAN = (0, 255, 255)
 ORANGE = (255, 165, 0)
 
 # Game variables
-armor = 100
+armor = 600
 score = 0
 killed_monsters = 0
 game_over = False
@@ -48,7 +48,7 @@ clock = pygame.time.Clock()
 
 # Load images
 try:
-    player_img = pygame.image.load(os.path.join(pic_dir, "Hofund.png")).convert_alpha()
+    player_img = pygame.image.load(os.path.join(pic_dir, "Heimdall00.jpeg")).convert_alpha()
     player_img = pygame.transform.scale(player_img, (80, 80))
 except pygame.error:
     # Fallback if image loading fails
@@ -68,7 +68,7 @@ class Player(pygame.sprite.Sprite):
         # Sword attributes
         self.sword_type = NORMAL_SWORD
         self.sword_count = 1
-        self.fire_rate = 1.0  # Shots per second
+        self.fire_rate = 2.0  # Shots per second
         self.damage = 10
         self.last_shot = 0
         self.sword_range = 20  # Radius of damage area
@@ -80,12 +80,18 @@ class Player(pygame.sprite.Sprite):
     def find_nearest_monster(self, monsters):
         nearest_monster = None
         min_distance = float('inf')
+        defense_line = SCREEN_HEIGHT - DEFENSE_HEIGHT
         attack_line = SCREEN_HEIGHT - DEFENSE_HEIGHT - ATTACK_HEIGHT
         
+        # 首先检查是否有怪物已经到达防线
+        attacking_monsters = []
         for monster in monsters:
-            # 只考虑已经进入攻防区域的怪物
-            if monster.rect.bottom >= attack_line:
-                # 计算与玩家的距离
+            if monster.attacking:
+                attacking_monsters.append(monster)
+        
+        # 如果有正在攻击的怪物，优先攻击它们中距离玩家最近的
+        if attacking_monsters:
+            for monster in attacking_monsters:
                 dx = monster.rect.centerx - self.rect.centerx
                 dy = monster.rect.centery - self.rect.centery
                 distance = (dx * dx + dy * dy) ** 0.5
@@ -94,8 +100,23 @@ class Player(pygame.sprite.Sprite):
                     min_distance = distance
                     nearest_monster = monster
         
+        # 如果没有正在攻击的怪物，则选择距离防线最近的怪物
+        else:
+            for monster in monsters:
+                # 只考虑已经进入攻防区域的怪物
+                if monster.rect.bottom >= attack_line and not monster.attacking:
+                    # 计算怪物到防线的距离
+                    distance_to_defense = defense_line - monster.rect.bottom
+                    
+                    if distance_to_defense < min_distance:
+                        min_distance = distance_to_defense
+                        nearest_monster = monster
+        
         if nearest_monster:
-            print(f"Nearest monster at: {nearest_monster.rect.topleft}, Distance: {min_distance}")
+            if nearest_monster.attacking:
+                print(f"Targeting attacking monster at: {nearest_monster.rect.topleft}")
+            else:
+                print(f"Targeting monster at: {nearest_monster.rect.topleft}, Distance to defense: {min_distance}")
         else:
             print("No monsters in attack area.")
         
@@ -119,19 +140,30 @@ class Player(pygame.sprite.Sprite):
                 base_angle = self.calculate_angle_to_target(nearest_monster)
                 print(f"Shooting at angle: {base_angle}")
                 
-                # Create sword based on type
-                for i in range(self.sword_count):
-                    # Adjust angle for multiple swords
-                    angle_offset = 0
-                    if self.sword_count > 1:
-                        angle_offset = (i - (self.sword_count - 1) / 2) * 15
-                    
-                    new_sword = Sword(self.rect.centerx, self.rect.centery, 
-                                     self.sword_type, self.damage, self.sword_range,
-                                     base_angle + angle_offset)
-                    all_sprites.add(new_sword)
-                    swords.add(new_sword)
-                    print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle + angle_offset}")
+                # 根据怪物是否正在攻击调整飞剑的分布
+                if nearest_monster.attacking:
+                    # 如果怪物正在攻击防线，所有飞剑都瞄准它
+                    for i in range(self.sword_count):
+                        new_sword = Sword(self.rect.centerx, self.rect.centery, 
+                                         self.sword_type, self.damage, self.sword_range,
+                                         base_angle)
+                        all_sprites.add(new_sword)
+                        swords.add(new_sword)
+                        print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle}")
+                else:
+                    # 如果怪物还未到达防线，飞剑可以有一定的扇形分布
+                    for i in range(self.sword_count):
+                        # Adjust angle for multiple swords
+                        angle_offset = 0
+                        if self.sword_count > 1:
+                            angle_offset = (i - (self.sword_count - 1) / 2) * 15
+                        
+                        new_sword = Sword(self.rect.centerx, self.rect.centery, 
+                                         self.sword_type, self.damage, self.sword_range,
+                                         base_angle + angle_offset)
+                        all_sprites.add(new_sword)
+                        swords.add(new_sword)
+                        print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle + angle_offset}")
 
 # Sword class
 class Sword(pygame.sprite.Sprite):
@@ -365,6 +397,10 @@ def check_collisions(swords, monsters, upgrade_popup):
             if monster.health <= 0:
                 score += 10
                 killed_monsters += 1
+                
+                # 如果是正在攻击的怪物被击杀，给予额外分数
+                if monster.attacking:
+                    score += 5
                 
                 # Check if monster drops upgrade
                 if monster.drops_upgrade:
