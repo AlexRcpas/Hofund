@@ -8,7 +8,7 @@ from pygame.locals import *
 pygame.init()
 
 # Game constants
-SCREEN_WIDTH = 400
+SCREEN_WIDTH = 460
 SCREEN_HEIGHT = 800
 FPS = 60
 
@@ -49,7 +49,7 @@ clock = pygame.time.Clock()
 # Load images
 try:
     player_img = pygame.image.load(os.path.join(pic_dir, "Heimdall00.jpeg")).convert_alpha()
-    player_img = pygame.transform.scale(player_img, (80, 80))
+    player_img = pygame.transform.scale(player_img, (100, 100))
 except pygame.error:
     # Fallback if image loading fails
     player_img = pygame.Surface((80, 80), pygame.SRCALPHA)
@@ -79,14 +79,14 @@ class Player(pygame.sprite.Sprite):
             },
             ICE_SWORD: {
                 "count": 1,
-                "fire_rate": 1.5,
-                "damage": 8,
+                "fire_rate": 2.0,
+                "damage": 10,
                 "range": 20,
                 "upgrades": 0
             },
             FIRE_SWORD: {
                 "count": 1,
-                "fire_rate": 1.0,
+                "fire_rate": 2.0,
                 "damage": 15,
                 "range": 20,
                 "upgrades": 0
