@@ -461,7 +461,7 @@ def spawn_monster(all_sprites, monsters):
     
     # Determine if this monster will drop an upgrade (20 out of first 200)
     global killed_monsters
-    if killed_monsters < 200 and random.random() < 0.1:  # 10% chance for first 200
+    if killed_monsters < 2000 and random.random() < 0.015:  # 10% chance for first 200
         new_monster.drops_upgrade = True
     
     all_sprites.add(new_monster)
@@ -667,7 +667,7 @@ upgrade_popup = UpgradePopup()
 
 # Monster spawn timer
 monster_spawn_timer = 0
-monster_spawn_delay = 1000  # milliseconds
+monster_spawn_delay = 200  # milliseconds
 
 # Main game loop
 running = True
