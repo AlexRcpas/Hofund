@@ -8,14 +8,14 @@ from pygame.locals import *
 pygame.init()
 
 # Game constants
-SCREEN_WIDTH = 460
+SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 800
 FPS = 60
 
 # Area dimensions
-WORMHOLE_HEIGHT = SCREEN_HEIGHT * 0.2  # Top 20% for wormhole area
+WORMHOLE_HEIGHT = SCREEN_HEIGHT * 0.18  # Top 20% for wormhole area
 DEFENSE_HEIGHT = SCREEN_HEIGHT * 0.3    # Bottom 30% for defense area
-ATTACK_HEIGHT = SCREEN_HEIGHT * 0.5     # Middle 50% for attack area
+ATTACK_HEIGHT = SCREEN_HEIGHT * 0.52     # Middle 50% for attack area
 
 # Colors
 BLACK = (0, 0, 0)
@@ -282,6 +282,7 @@ class Monster(pygame.sprite.Sprite):
         # If monster is attacking, reduce armor
         if self.attacking:
             armor -= self.damage * 0.1  # Adjust the rate of damage as needed
+            armor = float("{:.1f}".format(armor))
             if armor < 0:
                 armor = 0
             return
@@ -509,15 +510,15 @@ def draw_game_areas(surface):
                     (SCREEN_WIDTH, SCREEN_HEIGHT - DEFENSE_HEIGHT), 3)
 
 def draw_hud(surface):
-    font = pygame.font.Font(None, 36)
+    font = pygame.font.Font(None, 32)
     
     # Draw armor
     armor_text = font.render(f"Armor: {armor}", True, WHITE)
-    surface.blit(armor_text, (20, SCREEN_HEIGHT - 40))
+    surface.blit(armor_text, (15, SCREEN_HEIGHT - 40))
     
     # Draw score
     score_text = font.render(f"Score: {score}", True, WHITE)
-    surface.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 20, SCREEN_HEIGHT - 40))
+    surface.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 15, SCREEN_HEIGHT - 40))
     
     # Draw killed monsters count
     killed_text = font.render(f"Monsters: {killed_monsters}/200", True, WHITE)
@@ -550,7 +551,7 @@ def reset_game():
     global all_sprites, monsters, swords, player, upgrade_popup
     
     # Reset game variables
-    armor = 100
+    armor = 600
     score = 0
     killed_monsters = 0
     game_over = False
