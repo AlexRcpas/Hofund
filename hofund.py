@@ -65,9 +65,6 @@ class Player(pygame.sprite.Sprite):
         self.rect.centerx = SCREEN_WIDTH // 2
         self.rect.centery = SCREEN_HEIGHT - DEFENSE_HEIGHT + (DEFENSE_HEIGHT // 3)
         
-        # 当前选择的剑类型
-        self.sword_type = NORMAL_SWORD
-        
         # 为每种剑类型创建独立的属性
         self.sword_attributes = {
             NORMAL_SWORD: {
@@ -75,26 +72,27 @@ class Player(pygame.sprite.Sprite):
                 "fire_rate": 2.0,    # 发射频率
                 "damage": 10,        # 伤害值
                 "range": 20,         # 伤害范围
-                "upgrades": 0        # 升级次数
+                "upgrades": 0,       # 升级次数
+                "last_shot": 0       # 上次发射时间
             },
             ICE_SWORD: {
                 "count": 1,
                 "fire_rate": 2.0,
                 "damage": 10,
                 "range": 20,
-                "upgrades": 0
+                "upgrades": 0,
+                "last_shot": 0
             },
             FIRE_SWORD: {
                 "count": 1,
                 "fire_rate": 2.0,
                 "damage": 15,
                 "range": 20,
-                "upgrades": 0
+                "upgrades": 0,
+                "last_shot": 0
             }
         }
         
-        self.last_shot = 0
-
     def update(self):
         # Player doesn't move, but could add movement controls here
         pass
@@ -152,48 +150,47 @@ class Player(pygame.sprite.Sprite):
         return angle
     
     def shoot(self, current_time, all_sprites, swords, monsters):
-        # Check if enough time has passed since last shot
-        if current_time - self.last_shot > 1000 / self.get_current_sword_attr("fire_rate"):
-            # 寻找最近的怪物
-            nearest_monster = self.find_nearest_monster(monsters)
+        nearest_monster = self.find_nearest_monster(monsters)
+        if not nearest_monster:
+            return
+
+        # 对每种剑类型分别检查是否可以发射
+        for sword_type in [NORMAL_SWORD, ICE_SWORD, FIRE_SWORD]:
+            attrs = self.sword_attributes[sword_type]
+            time_since_last_shot = current_time - attrs["last_shot"]
             
-            if nearest_monster:
-                self.last_shot = current_time
+            if time_since_last_shot > 1000 / attrs["fire_rate"]:
+                attrs["last_shot"] = current_time
                 base_angle = self.calculate_angle_to_target(nearest_monster)
-                print(f"Shooting at angle: {base_angle}")
                 
                 # 根据怪物是否正在攻击调整飞剑的分布
                 if nearest_monster.attacking:
                     # 如果怪物正在攻击防线，所有飞剑都瞄准它
-                    for i in range(self.get_current_sword_attr("count")):
+                    for i in range(attrs["count"]):
                         new_sword = Sword(self.rect.centerx, self.rect.centery, 
-                                         self.sword_type, self.get_current_sword_attr("damage"), self.get_current_sword_attr("range"),
-                                         base_angle)
+                                        sword_type, attrs["damage"], attrs["range"],
+                                        base_angle)
                         all_sprites.add(new_sword)
                         swords.add(new_sword)
-                        print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle}")
                 else:
                     # 如果怪物还未到达防线，飞剑可以有一定的扇形分布
-                    for i in range(self.get_current_sword_attr("count")):
-                        # Adjust angle for multiple swords
+                    for i in range(attrs["count"]):
                         angle_offset = 0
-                        if self.get_current_sword_attr("count") > 1:
-                            angle_offset = (i - (self.get_current_sword_attr("count") - 1) / 2) * 15
+                        if attrs["count"] > 1:
+                            angle_offset = (i - (attrs["count"] - 1) / 2) * 15
                         
                         new_sword = Sword(self.rect.centerx, self.rect.centery, 
-                                         self.sword_type, self.get_current_sword_attr("damage"), self.get_current_sword_attr("range"),
-                                         base_angle + angle_offset)
+                                        sword_type, attrs["damage"], attrs["range"],
+                                        base_angle + angle_offset)
                         all_sprites.add(new_sword)
                         swords.add(new_sword)
-                        print(f"Sword created at: {new_sword.rect.topleft} with angle: {base_angle + angle_offset}")
 
-    # 获取当前剑类型的属性
-    def get_current_sword_attr(self, attr_name):
-        return self.sword_attributes[self.sword_type][attr_name]
-    
-    # 设置当前剑类型的属性
-    def set_current_sword_attr(self, attr_name, value):
-        self.sword_attributes[self.sword_type][attr_name] = value
+    def get_cooldown_percentage(self, current_time, sword_type):
+        """获取指定剑类型的冷却百分比（0-1）"""
+        attrs = self.sword_attributes[sword_type]
+        time_since_last_shot = current_time - attrs["last_shot"]
+        cooldown_time = 1000 / attrs["fire_rate"]
+        return min(time_since_last_shot / cooldown_time, 1.0)
 
 # Sword class
 class Sword(pygame.sprite.Sprite):
@@ -314,32 +311,47 @@ class UpgradePopup:
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin, 
                                 button_width, button_height),
-             "text": "Normal Sword", "action": lambda: self.change_sword_type(NORMAL_SWORD)},
+             "text": "Add Normal Sword", "action": lambda: self.add_sword(NORMAL_SWORD)},
             
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin * 2 + button_height, 
                                 button_width, button_height),
-             "text": "Ice Sword", "action": lambda: self.change_sword_type(ICE_SWORD)},
+             "text": "Add Ice Sword", "action": lambda: self.add_sword(ICE_SWORD)},
             
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin * 3 + button_height * 2, 
                                 button_width, button_height),
-             "text": "Fire Sword", "action": lambda: self.change_sword_type(FIRE_SWORD)},
+             "text": "Add Fire Sword", "action": lambda: self.add_sword(FIRE_SWORD)},
             
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin * 4 + button_height * 3, 
                                 button_width, button_height),
-             "text": "Add Sword", "action": self.add_sword},
+             "text": "Speed Up Normal", "action": lambda: self.increase_fire_rate(NORMAL_SWORD)},
             
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin * 5 + button_height * 4, 
                                 button_width, button_height),
-             "text": "Increase Fire Rate", "action": self.increase_fire_rate},
+             "text": "Speed Up Ice", "action": lambda: self.increase_fire_rate(ICE_SWORD)},
             
             {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
                                 self.rect.y + button_margin * 6 + button_height * 5, 
                                 button_width, button_height),
-             "text": "Increase Damage", "action": self.increase_damage}
+             "text": "Speed Up Fire", "action": lambda: self.increase_fire_rate(FIRE_SWORD)},
+            
+            {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
+                                self.rect.y + button_margin * 7 + button_height * 6, 
+                                button_width, button_height),
+             "text": "Power Up Normal", "action": lambda: self.increase_damage(NORMAL_SWORD)},
+            
+            {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
+                                self.rect.y + button_margin * 8 + button_height * 7, 
+                                button_width, button_height),
+             "text": "Power Up Ice", "action": lambda: self.increase_damage(ICE_SWORD)},
+            
+            {"rect": pygame.Rect(self.rect.centerx - button_width // 2, 
+                                self.rect.y + button_margin * 9 + button_height * 8, 
+                                button_width, button_height),
+             "text": "Power Up Fire", "action": lambda: self.increase_damage(FIRE_SWORD)}
         ]
         
         self.font = pygame.font.Font(None, 28)
@@ -356,19 +368,21 @@ class UpgradePopup:
         title = self.font.render("Choose Upgrade", True, WHITE)
         surface.blit(title, (self.rect.centerx - title.get_width() // 2, self.rect.y + 10))
         
-        # Draw current sword type and upgrade info
-        sword_type_names = {NORMAL_SWORD: "Normal", ICE_SWORD: "Ice", FIRE_SWORD: "Fire"}
-        current_sword = sword_type_names[player.sword_type]
-        current_upgrades = player.get_current_sword_attr("upgrades")
-        
-        sword_info = self.font.render(f"Current: {current_sword} Sword - Upgrades: {current_upgrades}/10", True, WHITE)
-        surface.blit(sword_info, (self.rect.centerx - sword_info.get_width() // 2, self.rect.y + 40))
-        
         # Draw buttons
         for button in self.buttons:
-            # 检查是否是升级按钮，如果是且已达到升级上限，则禁用
-            is_upgrade_button = button["text"] in ["Add Sword", "Increase Fire Rate", "Increase Damage"]
-            is_maxed = is_upgrade_button and player.get_current_sword_attr("upgrades") >= 10
+            # 检查是否是升级按钮，并确定对应的剑类型
+            sword_type = None
+            if "Normal" in button["text"]:
+                sword_type = NORMAL_SWORD
+            elif "Ice" in button["text"]:
+                sword_type = ICE_SWORD
+            elif "Fire" in button["text"]:
+                sword_type = FIRE_SWORD
+            
+            # 检查是否达到升级上限
+            is_maxed = False
+            if sword_type is not None:
+                is_maxed = player.sword_attributes[sword_type]["upgrades"] >= 10
             
             # 设置按钮颜色
             if is_maxed:
@@ -396,10 +410,18 @@ class UpgradePopup:
             
         for button in self.buttons:
             if button["rect"].collidepoint(pos):
-                # 检查是否是升级按钮，如果是且已达到升级上限，则不执行操作
-                is_upgrade_button = button["text"] in ["Add Sword", "Increase Fire Rate", "Increase Damage"]
-                if is_upgrade_button and player.get_current_sword_attr("upgrades") >= 10:
-                    print(f"Cannot upgrade {player.sword_type} sword further - max upgrades reached")
+                # 检查对应的剑类型
+                sword_type = None
+                if "Normal" in button["text"]:
+                    sword_type = NORMAL_SWORD
+                elif "Ice" in button["text"]:
+                    sword_type = ICE_SWORD
+                elif "Fire" in button["text"]:
+                    sword_type = FIRE_SWORD
+                
+                # 检查是否达到升级上限
+                if sword_type is not None and player.sword_attributes[sword_type]["upgrades"] >= 10:
+                    print(f"Cannot upgrade further - max level reached")
                     return True
                 
                 button["action"]()
@@ -408,39 +430,26 @@ class UpgradePopup:
                 
         return False
     
-    def change_sword_type(self, sword_type):
+    def add_sword(self, sword_type):
         global player
-        player.sword_type = sword_type
+        attrs = player.sword_attributes[sword_type]
+        attrs["count"] += 1
+        attrs["upgrades"] += 1
+        print(f"Added sword - type: {sword_type}, count: {attrs['count']}, upgrades: {attrs['upgrades']}/10")
     
-    def add_sword(self):
+    def increase_fire_rate(self, sword_type):
         global player
-        current_count = player.get_current_sword_attr("count")
-        player.set_current_sword_attr("count", current_count + 1)
-        
-        # 增加升级计数
-        current_upgrades = player.get_current_sword_attr("upgrades")
-        player.set_current_sword_attr("upgrades", current_upgrades + 1)
-        print(f"Upgraded {player.sword_type} sword - count: {current_count + 1}, upgrades: {current_upgrades + 1}/10")
+        attrs = player.sword_attributes[sword_type]
+        attrs["fire_rate"] *= 1.2
+        attrs["upgrades"] += 1
+        print(f"Increased fire rate - type: {sword_type}, rate: {attrs['fire_rate']:.2f}, upgrades: {attrs['upgrades']}/10")
     
-    def increase_fire_rate(self):
+    def increase_damage(self, sword_type):
         global player
-        current_fire_rate = player.get_current_sword_attr("fire_rate")
-        player.set_current_sword_attr("fire_rate", current_fire_rate * 1.2)
-        
-        # 增加升级计数
-        current_upgrades = player.get_current_sword_attr("upgrades")
-        player.set_current_sword_attr("upgrades", current_upgrades + 1)
-        print(f"Upgraded {player.sword_type} sword - fire rate: {current_fire_rate * 1.2:.2f}, upgrades: {current_upgrades + 1}/10")
-    
-    def increase_damage(self):
-        global player
-        current_damage = player.get_current_sword_attr("damage")
-        player.set_current_sword_attr("damage", current_damage + 5)
-        
-        # 增加升级计数
-        current_upgrades = player.get_current_sword_attr("upgrades")
-        player.set_current_sword_attr("upgrades", current_upgrades + 1)
-        print(f"Upgraded {player.sword_type} sword - damage: {current_damage + 5}, upgrades: {current_upgrades + 1}/10")
+        attrs = player.sword_attributes[sword_type]
+        attrs["damage"] += 5
+        attrs["upgrades"] += 1
+        print(f"Increased damage - type: {sword_type}, damage: {attrs['damage']}, upgrades: {attrs['upgrades']}/10")
 
 # Game functions
 def spawn_monster(all_sprites, monsters):
@@ -546,6 +555,79 @@ def draw_game_over(surface):
                 (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 
                  SCREEN_HEIGHT // 2 + game_over_text.get_height() + score_text.get_height() + 20))
 
+def draw_sword_hud(surface, player, current_time):
+    # HUD位置和大小设置
+    hud_width = 120
+    hud_x = SCREEN_WIDTH - hud_width - 10
+    hud_y = 10
+    item_height = 100
+    padding = 10
+    
+    # 字体设置
+    font = pygame.font.Font(None, 24)
+    
+    # 剑类型颜色映射
+    sword_colors = {
+        NORMAL_SWORD: WHITE,
+        ICE_SWORD: CYAN,
+        FIRE_SWORD: ORANGE
+    }
+    
+    sword_names = {
+        NORMAL_SWORD: "Normal",
+        ICE_SWORD: "Ice",
+        FIRE_SWORD: "Fire"
+    }
+    
+    # 绘制每种剑的状态
+    for i, sword_type in enumerate([NORMAL_SWORD, ICE_SWORD, FIRE_SWORD]):
+        attrs = player.sword_attributes[sword_type]
+        y = hud_y + (item_height + padding) * i
+        
+        # 绘制背景
+        pygame.draw.rect(surface, (50, 50, 50), 
+                        (hud_x, y, hud_width, item_height))
+        pygame.draw.rect(surface, sword_colors[sword_type], 
+                        (hud_x, y, hud_width, item_height), 2)
+        
+        # 绘制剑类型名称
+        name_text = font.render(f"{sword_names[sword_type]}", True, sword_colors[sword_type])
+        surface.blit(name_text, (hud_x + 5, y + 5))
+        
+        # 绘制等级信息
+        level_text = font.render(f"Lv.{attrs['upgrades']}", True, sword_colors[sword_type])
+        surface.blit(level_text, (hud_x + hud_width - level_text.get_width() - 5, y + 5))
+        
+        # 绘制属性信息
+        count_text = font.render(f"Count: {attrs['count']}", True, WHITE)
+        damage_text = font.render(f"DMG: {attrs['damage']}", True, WHITE)
+        rate_text = font.render(f"Rate: {attrs['fire_rate']:.1f}", True, WHITE)
+        
+        surface.blit(count_text, (hud_x + 5, y + 25))
+        surface.blit(damage_text, (hud_x + 5, y + 45))
+        surface.blit(rate_text, (hud_x + 5, y + 65))
+        
+        # 绘制CD倒计时圆盘
+        cd_radius = 15
+        cd_x = hud_x + hud_width - cd_radius - 5
+        cd_y = y + item_height - cd_radius - 5
+        
+        # 绘制底层圆
+        pygame.draw.circle(surface, (30, 30, 30), (cd_x, cd_y), cd_radius)
+        
+        # 计算并绘制CD进度
+        cooldown = player.get_cooldown_percentage(current_time, sword_type)
+        if cooldown < 1:
+            angle = (1 - cooldown) * 360  # 转换为角度
+            # 绘制扇形
+            pygame.draw.arc(surface, sword_colors[sword_type],
+                          (cd_x - cd_radius, cd_y - cd_radius,
+                           cd_radius * 2, cd_radius * 2),
+                          math.radians(270), math.radians(270 + angle), cd_radius)
+        
+        # 绘制圆形边框
+        pygame.draw.circle(surface, sword_colors[sword_type], (cd_x, cd_y), cd_radius, 2)
+
 def reset_game():
     global armor, score, killed_monsters, game_over
     global all_sprites, monsters, swords, player, upgrade_popup
@@ -615,7 +697,7 @@ while running:
             spawn_monster(all_sprites, monsters)
             monster_spawn_timer = current_time
         
-        # Auto-shoot (修改这里，传入monsters参数)
+        # Auto-shoot
         player.shoot(current_time, all_sprites, swords, monsters)
         
         # Update all sprites
@@ -639,6 +721,9 @@ while running:
     
     # Draw HUD
     draw_hud(screen)
+    
+    # Draw sword status HUD
+    draw_sword_hud(screen, player, current_time)
     
     # Draw upgrade popup if active
     upgrade_popup.draw(screen)
