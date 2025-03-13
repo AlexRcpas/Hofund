@@ -70,13 +70,13 @@ class Player(pygame.sprite.Sprite):
             NORMAL_SWORD: {
                 "count": 1,          # 剑的数量
                 "fire_rate": 2.0,    # 发射频率
-                "damage": 10,        # 伤害值
+                "damage": 8,        # 伤害值
                 "range": 20,         # 伤害范围
                 "upgrades": 0,       # 升级次数
                 "last_shot": 0       # 上次发射时间
             },
             ICE_SWORD: {
-                "count": 1,
+                "count": 0,
                 "fire_rate": 2.0,
                 "damage": 10,
                 "range": 20,
@@ -84,7 +84,7 @@ class Player(pygame.sprite.Sprite):
                 "last_shot": 0
             },
             FIRE_SWORD: {
-                "count": 1,
+                "count": 0,
                 "fire_rate": 2.0,
                 "damage": 15,
                 "range": 20,
@@ -243,19 +243,19 @@ class Monster(pygame.sprite.Sprite):
         if monster_type == 0:  # Basic monster
             self.image = pygame.Surface((40, 40))
             self.image.fill(RED)
-            self.health = 20
-            self.speed = 2
+            self.health = 70
+            self.speed = 1.5
             self.damage = 5
         elif monster_type == 1:  # Fast monster
             self.image = pygame.Surface((30, 30))
             self.image.fill(GREEN)
-            self.health = 10
-            self.speed = 4
+            self.health = 30
+            self.speed = 2.5
             self.damage = 3
         elif monster_type == 2:  # Tank monster
             self.image = pygame.Surface((50, 50))
             self.image.fill(BLUE)
-            self.health = 40
+            self.health = 120
             self.speed = 1
             self.damage = 10
         
@@ -278,8 +278,8 @@ class Monster(pygame.sprite.Sprite):
         
         # If monster is attacking, reduce armor
         if self.attacking:
-            armor -= self.damage * 0.1  # Adjust the rate of damage as needed
-            armor = float("{:.1f}".format(armor))
+            armor -= self.damage * 0.02  # Adjust the rate of damage as needed
+            armor = float("{:.2f}".format(armor))
             if armor < 0:
                 armor = 0
             return
@@ -519,7 +519,7 @@ def draw_game_areas(surface):
                     (SCREEN_WIDTH, SCREEN_HEIGHT - DEFENSE_HEIGHT), 3)
 
 def draw_hud(surface):
-    font = pygame.font.Font(None, 32)
+    font = pygame.font.Font(None, 30)
     
     # Draw armor
     armor_text = font.render(f"Armor: {armor}", True, WHITE)
@@ -527,7 +527,7 @@ def draw_hud(surface):
     
     # Draw score
     score_text = font.render(f"Score: {score}", True, WHITE)
-    surface.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 15, SCREEN_HEIGHT - 40))
+    surface.blit(score_text, (SCREEN_WIDTH - score_text.get_width() - 10, SCREEN_HEIGHT - 40))
     
     # Draw killed monsters count
     killed_text = font.render(f"Monsters: {killed_monsters}/200", True, WHITE)
@@ -633,7 +633,7 @@ def reset_game():
     global all_sprites, monsters, swords, player, upgrade_popup
     
     # Reset game variables
-    armor = 600
+    armor = 1000
     score = 0
     killed_monsters = 0
     game_over = False
@@ -667,7 +667,7 @@ upgrade_popup = UpgradePopup()
 
 # Monster spawn timer
 monster_spawn_timer = 0
-monster_spawn_delay = 200  # milliseconds
+monster_spawn_delay = 360  # milliseconds
 
 # Main game loop
 running = True
