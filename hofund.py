@@ -66,6 +66,11 @@ class Player(pygame.sprite.Sprite):
         self.rect.centerx = SCREEN_WIDTH // 2
         self.rect.centery = SCREEN_HEIGHT - DEFENSE_HEIGHT + (DEFENSE_HEIGHT // 3)
         
+        # 跟踪已获取的剑类型（初始只有普通剑）
+        self.unlocked_sword_types = [NORMAL_SWORD]
+        # 限制最多可获取的额外剑类型数量
+        self.max_extra_sword_types = 3
+        
         # 为每种剑类型创建独立的属性
         self.sword_attributes = {
             NORMAL_SWORD: {
@@ -93,7 +98,7 @@ class Player(pygame.sprite.Sprite):
                 "last_shot": 0
             },
             SWORD_RAIN: {
-                "damage": 3,         # 每次伤害值
+                "damage": 0,         # 每次伤害值（0表示未解锁）
                 "radius": 60,        # 影响范围
                 "duration": 5000,    # 持续时间(毫秒)
                 "cooldown": 15000,   # 冷却时间(毫秒)
@@ -105,6 +110,25 @@ class Player(pygame.sprite.Sprite):
         # 剑雨技能是否激活
         self.sword_rain_active = False
         
+    def can_unlock_new_sword_type(self):
+        """检查是否还能解锁新的剑类型"""
+        # 计算已解锁的额外剑类型数量（不包括NORMAL_SWORD）
+        extra_types_count = len([t for t in self.unlocked_sword_types if t != NORMAL_SWORD])
+        return extra_types_count < self.max_extra_sword_types
+    
+    def unlock_sword_type(self, sword_type):
+        """解锁新的剑类型"""
+        if sword_type not in self.unlocked_sword_types and self.can_unlock_new_sword_type():
+            self.unlocked_sword_types.append(sword_type)
+            # 如果是剑雨，设置初始伤害值
+            if sword_type == SWORD_RAIN:
+                self.sword_attributes[SWORD_RAIN]["damage"] = 3
+            # 其他剑类型设置初始数量为1
+            else:
+                self.sword_attributes[sword_type]["count"] = 1
+            return True
+        return False
+    
     def update(self):
         # Player doesn't move, but could add movement controls here
         pass
@@ -166,9 +190,17 @@ class Player(pygame.sprite.Sprite):
         if not nearest_monster:
             return
 
-        # 对每种剑类型分别检查是否可以发射
-        for sword_type in [NORMAL_SWORD, ICE_SWORD, FIRE_SWORD]:
+        # 对每种已解锁的剑类型分别检查是否可以发射
+        for sword_type in self.unlocked_sword_types:
+            # 跳过剑雨类型，它有单独的触发机制
+            if sword_type == SWORD_RAIN:
+                continue
+                
             attrs = self.sword_attributes[sword_type]
+            # 确保剑的数量大于0
+            if attrs["count"] <= 0:
+                continue
+                
             time_since_last_shot = current_time - attrs["last_shot"]
             
             if time_since_last_shot > 1000 / attrs["fire_rate"]:
@@ -471,24 +503,19 @@ class UpgradePopup:
         # 所有可能的升级选项
         self.all_upgrades = [
             {"text": "Add Normal Sword", "action": lambda: self.add_sword(NORMAL_SWORD), "sword_type": NORMAL_SWORD},
-            {"text": "Add Ice Sword", "action": lambda: self.add_sword(ICE_SWORD), "sword_type": ICE_SWORD},
-            {"text": "Add Fire Sword", "action": lambda: self.add_sword(FIRE_SWORD), "sword_type": FIRE_SWORD},
             {"text": "Speed Up Normal", "action": lambda: self.increase_fire_rate(NORMAL_SWORD), "sword_type": NORMAL_SWORD},
-            {"text": "Speed Up Ice", "action": lambda: self.increase_fire_rate(ICE_SWORD), "sword_type": ICE_SWORD},
-            {"text": "Speed Up Fire", "action": lambda: self.increase_fire_rate(FIRE_SWORD), "sword_type": FIRE_SWORD},
-            {"text": "Power Up Normal", "action": lambda: self.increase_damage(NORMAL_SWORD), "sword_type": NORMAL_SWORD},
-            {"text": "Power Up Ice", "action": lambda: self.increase_damage(ICE_SWORD), "sword_type": ICE_SWORD},
-            {"text": "Power Up Fire", "action": lambda: self.increase_damage(FIRE_SWORD), "sword_type": FIRE_SWORD}
+            {"text": "Power Up Normal", "action": lambda: self.increase_damage(NORMAL_SWORD), "sword_type": NORMAL_SWORD}
         ]
         
-        # 剑雨相关的升级选项
-        self.sword_rain_upgrades = [
-            {"text": "Unlock Sword Rain", "action": lambda: self.unlock_sword_rain(), "sword_type": SWORD_RAIN},
-            {"text": "Rain Damage Up", "action": lambda: self.upgrade_sword_rain_damage(), "sword_type": SWORD_RAIN},
-            {"text": "Rain Radius Up", "action": lambda: self.upgrade_sword_rain_radius(), "sword_type": SWORD_RAIN},
-            {"text": "Rain Duration Up", "action": lambda: self.upgrade_sword_rain_duration(), "sword_type": SWORD_RAIN},
-            {"text": "Rain Cooldown Down", "action": lambda: self.upgrade_sword_rain_cooldown(), "sword_type": SWORD_RAIN}
+        # 可解锁的新剑类型
+        self.unlock_options = [
+            {"text": "Unlock Ice Sword", "action": lambda: self.unlock_sword_type(ICE_SWORD), "sword_type": ICE_SWORD},
+            {"text": "Unlock Fire Sword", "action": lambda: self.unlock_sword_type(FIRE_SWORD), "sword_type": FIRE_SWORD},
+            {"text": "Unlock Sword Rain", "action": lambda: self.unlock_sword_type(SWORD_RAIN), "sword_type": SWORD_RAIN}
         ]
+        
+        # 已解锁剑类型的升级选项（会动态生成）
+        self.unlocked_upgrades = []
         
         # 当前显示的升级选项
         self.current_upgrades = []
@@ -506,27 +533,67 @@ class UpgradePopup:
         # 初始化随机选项
         self.randomize_upgrades()
     
+    def update_unlocked_upgrades(self):
+        """更新已解锁剑类型的升级选项"""
+        self.unlocked_upgrades = []
+        
+        # 检查ICE_SWORD是否已解锁
+        if ICE_SWORD in player.unlocked_sword_types:
+            self.unlocked_upgrades.extend([
+                {"text": "Add Ice Sword", "action": lambda: self.add_sword(ICE_SWORD), "sword_type": ICE_SWORD},
+                {"text": "Speed Up Ice", "action": lambda: self.increase_fire_rate(ICE_SWORD), "sword_type": ICE_SWORD},
+                {"text": "Power Up Ice", "action": lambda: self.increase_damage(ICE_SWORD), "sword_type": ICE_SWORD}
+            ])
+        
+        # 检查FIRE_SWORD是否已解锁
+        if FIRE_SWORD in player.unlocked_sword_types:
+            self.unlocked_upgrades.extend([
+                {"text": "Add Fire Sword", "action": lambda: self.add_sword(FIRE_SWORD), "sword_type": FIRE_SWORD},
+                {"text": "Speed Up Fire", "action": lambda: self.increase_fire_rate(FIRE_SWORD), "sword_type": FIRE_SWORD},
+                {"text": "Power Up Fire", "action": lambda: self.increase_damage(FIRE_SWORD), "sword_type": FIRE_SWORD}
+            ])
+        
+        # 检查SWORD_RAIN是否已解锁
+        if SWORD_RAIN in player.unlocked_sword_types:
+            self.unlocked_upgrades.extend([
+                {"text": "Rain Damage Up", "action": lambda: self.upgrade_sword_rain_damage(), "sword_type": SWORD_RAIN},
+                {"text": "Rain Radius Up", "action": lambda: self.upgrade_sword_rain_radius(), "sword_type": SWORD_RAIN},
+                {"text": "Rain Duration Up", "action": lambda: self.upgrade_sword_rain_duration(), "sword_type": SWORD_RAIN},
+                {"text": "Rain Cooldown Down", "action": lambda: self.upgrade_sword_rain_cooldown(), "sword_type": SWORD_RAIN}
+            ])
+    
     def randomize_upgrades(self):
-        """随机选择3个升级选项，前三次弹出必然包含剑雨选项"""
-        # 过滤掉已达到最大升级的选项
+        """随机选择3个升级选项"""
+        # 更新已解锁剑类型的升级选项
+        self.update_unlocked_upgrades()
+        
+        # 获取所有可用的升级选项
         available_upgrades = []
+        
+        # 添加普通剑的升级选项
         for upgrade in self.all_upgrades:
-            sword_type = upgrade["sword_type"]
-            if player.sword_attributes[sword_type]["upgrades"] < 10:
+            if player.sword_attributes[upgrade["sword_type"]]["upgrades"] < 10:
                 available_upgrades.append(upgrade)
         
-        # 过滤可用的剑雨升级选项
-        available_rain_upgrades = []
-        for upgrade in self.sword_rain_upgrades:
-            # 如果是解锁选项，且剑雨已解锁（有伤害值），则跳过
-            if upgrade["text"] == "Unlock Sword Rain" and player.sword_attributes[SWORD_RAIN]["damage"] > 0:
-                continue
-            # 如果不是解锁选项，且剑雨未解锁，则跳过
-            if upgrade["text"] != "Unlock Sword Rain" and player.sword_attributes[SWORD_RAIN]["damage"] == 0:
-                continue
-            # 检查是否达到最大升级
-            if player.sword_attributes[SWORD_RAIN]["upgrades"] < 10:
-                available_rain_upgrades.append(upgrade)
+        # 添加已解锁剑类型的升级选项
+        for upgrade in self.unlocked_upgrades:
+            if player.sword_attributes[upgrade["sword_type"]]["upgrades"] < 10:
+                available_upgrades.append(upgrade)
+        
+        # 添加可解锁的新剑类型选项
+        if player.can_unlock_new_sword_type():
+            for option in self.unlock_options:
+                if option["sword_type"] not in player.unlocked_sword_types:
+                    available_upgrades.append(option)
+        
+        # 如果没有可用升级，返回
+        if not available_upgrades:
+            self.current_upgrades = []
+            return
+        
+        # 随机选择3个或更少的升级选项
+        num_options = min(3, len(available_upgrades))
+        selected_upgrades = random.sample(available_upgrades, num_options)
         
         # 设置按钮位置
         button_width = 180
@@ -534,75 +601,25 @@ class UpgradePopup:
         button_margin = 20
         
         self.current_upgrades = []
-        
-        # 前三次弹出必然包含剑雨选项
-        if self.popup_count < 3 and available_rain_upgrades:
-            # 选择一个剑雨升级选项
-            rain_upgrade = random.choice(available_rain_upgrades)
-            
-            # 从普通选项中选择剩余的选项
-            remaining_slots = 2  # 总共3个位置，已用1个
-            if available_upgrades and remaining_slots > 0:
-                # 选择剩余数量的普通升级选项
-                num_regular = min(remaining_slots, len(available_upgrades))
-                regular_upgrades = random.sample(available_upgrades, num_regular)
-                
-                # 合并选项并随机排序
-                all_selected = [rain_upgrade] + regular_upgrades
-                random.shuffle(all_selected)
-                
-                # 设置按钮位置
-                for i, upgrade in enumerate(all_selected):
-                    button = upgrade.copy()
-                    button["rect"] = pygame.Rect(
-                        self.rect.centerx - button_width // 2, 
-                        self.rect.y + button_margin * (i+1) + button_height * i, 
-                        button_width, button_height
-                    )
-                    self.current_upgrades.append(button)
-            else:
-                # 如果没有普通选项，只显示剑雨选项
-                button = rain_upgrade.copy()
-                button["rect"] = pygame.Rect(
-                    self.rect.centerx - button_width // 2, 
-                    self.rect.y + button_margin + button_height * 0, 
-                    button_width, button_height
-                )
-                self.current_upgrades.append(button)
-        else:
-            # 正常随机选择
-            all_available = available_upgrades + available_rain_upgrades
-            
-            # 如果没有可用升级，返回
-            if not all_available:
-                return
-            
-            # 随机选择3个或更少的升级选项
-            num_options = min(3, len(all_available))
-            selected_upgrades = random.sample(all_available, num_options)
-            
-            # 设置按钮位置
-            for i, upgrade in enumerate(selected_upgrades):
-                button = upgrade.copy()
-                button["rect"] = pygame.Rect(
-                    self.rect.centerx - button_width // 2, 
-                    self.rect.y + button_margin * (i+1) + button_height * i, 
-                    button_width, button_height
-                )
-                self.current_upgrades.append(button)
+        for i, upgrade in enumerate(selected_upgrades):
+            button = upgrade.copy()
+            button["rect"] = pygame.Rect(
+                self.rect.centerx - button_width // 2, 
+                self.rect.y + button_margin * (i+1) + button_height * i, 
+                button_width, button_height
+            )
+            self.current_upgrades.append(button)
     
-    def unlock_sword_rain(self):
-        """解锁剑雨技能"""
+    def unlock_sword_type(self, sword_type):
+        """解锁新的剑类型"""
         global player
-        attrs = player.sword_attributes[SWORD_RAIN]
-        # 设置初始伤害值，表示已解锁
-        attrs["damage"] = 3
-        attrs["upgrades"] += 1
-        print(f"Unlocked Sword Rain! Initial damage: {attrs['damage']}")
-        
-        # 解锁后自动触发一次剑雨效果
-        current_time = pygame.time.get_ticks()
-        player.auto_use_sword_rain(current_time, all_sprites)
+        if player.unlock_sword_type(sword_type):
+            print(f"Unlocked new sword type: {sword_type}")
+            # 如果是剑雨，直接调用原有的解锁方法
+            if sword_type == SWORD_RAIN:
+                self.unlock_sword_rain()
+            return True
+        return False
     
     def draw(self, surface):
         if not self.active:
@@ -716,6 +733,17 @@ class UpgradePopup:
         attrs["cooldown"] = max(5000, attrs["cooldown"] - 1000)  # 减少1秒，最低5秒
         attrs["upgrades"] += 1
         print(f"Decreased sword rain cooldown - cooldown: {attrs['cooldown']/1000}s, upgrades: {attrs['upgrades']}/10")
+    
+    def unlock_sword_rain(self):
+        """解锁剑雨技能"""
+        global player
+        attrs = player.sword_attributes[SWORD_RAIN]
+        attrs["upgrades"] += 1
+        print(f"Unlocked Sword Rain! Initial damage: {attrs['damage']}")
+        
+        # 解锁后自动触发一次剑雨效果
+        current_time = pygame.time.get_ticks()
+        player.auto_use_sword_rain(current_time, all_sprites)
 
 # Game functions
 def spawn_monster(all_sprites, monsters):
@@ -828,10 +856,10 @@ def draw_game_over(surface):
 
 def draw_sword_hud(surface, player, current_time):
     # HUD位置和大小设置
-    hud_width = 120
+    hud_width = 80
     hud_x = SCREEN_WIDTH - hud_width - 10
     hud_y = 10
-    item_height = 100
+    item_height = 60
     padding = 10
     
     # 字体设置
@@ -852,44 +880,41 @@ def draw_sword_hud(surface, player, current_time):
         SWORD_RAIN: "Rain"
     }
     
-    # 绘制每种剑的状态
-    for i, sword_type in enumerate([NORMAL_SWORD, ICE_SWORD, FIRE_SWORD]):
+    # 获取已解锁的剑类型（不包括NORMAL_SWORD）
+    unlocked_types = [t for t in player.unlocked_sword_types if t != NORMAL_SWORD]
+    
+    # 绘制每种已解锁剑的状态
+    for i, sword_type in enumerate(unlocked_types):
         attrs = player.sword_attributes[sword_type]
         y = hud_y + (item_height + padding) * i
         
-        # 绘制背景
-        pygame.draw.rect(surface, (50, 50, 50), 
-                        (hud_x, y, hud_width, item_height))
+        # 创建半透明背景
+        bg_surface = pygame.Surface((hud_width, item_height), pygame.SRCALPHA)
+        bg_surface.fill((50, 50, 50, 150))  # 半透明背景
+        surface.blit(bg_surface, (hud_x, y))
+        
+        # 绘制边框
         pygame.draw.rect(surface, sword_colors[sword_type], 
                         (hud_x, y, hud_width, item_height), 2)
         
-        # 绘制剑类型名称
-        name_text = font.render(f"{sword_names[sword_type]}", True, sword_colors[sword_type])
+        # 绘制剑类型名称和等级
+        name_text = font.render(f"{sword_names[sword_type]} Lv.{attrs['upgrades']}", True, sword_colors[sword_type])
         surface.blit(name_text, (hud_x + 5, y + 5))
-        
-        # 绘制等级信息
-        level_text = font.render(f"Lv.{attrs['upgrades']}", True, sword_colors[sword_type])
-        surface.blit(level_text, (hud_x + hud_width - level_text.get_width() - 5, y + 5))
-        
-        # 绘制属性信息
-        count_text = font.render(f"Count: {attrs['count']}", True, WHITE)
-        damage_text = font.render(f"DMG: {attrs['damage']}", True, WHITE)
-        rate_text = font.render(f"Rate: {attrs['fire_rate']:.1f}", True, WHITE)
-        
-        surface.blit(count_text, (hud_x + 5, y + 25))
-        surface.blit(damage_text, (hud_x + 5, y + 45))
-        surface.blit(rate_text, (hud_x + 5, y + 65))
         
         # 绘制CD倒计时圆盘
         cd_radius = 15
-        cd_x = hud_x + hud_width - cd_radius - 5
+        cd_x = hud_x + hud_width // 2
         cd_y = y + item_height - cd_radius - 5
         
         # 绘制底层圆
-        pygame.draw.circle(surface, (30, 30, 30), (cd_x, cd_y), cd_radius)
+        pygame.draw.circle(surface, (30, 30, 30, 150), (cd_x, cd_y), cd_radius)
         
         # 计算并绘制CD进度
-        cooldown = player.get_cooldown_percentage(current_time, sword_type)
+        if sword_type == SWORD_RAIN:
+            cooldown = player.get_sword_rain_cooldown_percentage(current_time)
+        else:
+            cooldown = player.get_cooldown_percentage(current_time, sword_type)
+            
         if cooldown < 1:
             angle = (1 - cooldown) * 360  # 转换为角度
             # 绘制扇形
@@ -900,66 +925,6 @@ def draw_sword_hud(surface, player, current_time):
         
         # 绘制圆形边框
         pygame.draw.circle(surface, sword_colors[sword_type], (cd_x, cd_y), cd_radius, 2)
-    
-    # 绘制剑雨技能状态
-    sword_rain_y = hud_y + (item_height + padding) * 3
-    sword_rain_attrs = player.sword_attributes[SWORD_RAIN]
-    
-    # 绘制背景
-    pygame.draw.rect(surface, (50, 50, 50), 
-                    (hud_x, sword_rain_y, hud_width, item_height))
-    pygame.draw.rect(surface, sword_colors[SWORD_RAIN], 
-                    (hud_x, sword_rain_y, hud_width, item_height), 2)
-    
-    # 绘制技能名称
-    name_text = font.render("Sword Rain", True, sword_colors[SWORD_RAIN])
-    surface.blit(name_text, (hud_x + 5, sword_rain_y + 5))
-    
-    # 绘制等级信息
-    level_text = font.render(f"Lv.{sword_rain_attrs['upgrades']}", True, sword_colors[SWORD_RAIN])
-    surface.blit(level_text, (hud_x + hud_width - level_text.get_width() - 5, sword_rain_y + 5))
-    
-    # 绘制属性信息
-    damage_text = font.render(f"DMG: {sword_rain_attrs['damage']}", True, WHITE)
-    radius_text = font.render(f"Radius: {sword_rain_attrs['radius']}", True, WHITE)
-    duration_text = font.render(f"Time: {sword_rain_attrs['duration']/1000:.1f}s", True, WHITE)
-    
-    surface.blit(damage_text, (hud_x + 5, sword_rain_y + 25))
-    surface.blit(radius_text, (hud_x + 5, sword_rain_y + 45))
-    surface.blit(duration_text, (hud_x + 5, sword_rain_y + 65))
-    
-    # 绘制CD倒计时圆盘
-    cd_radius = 15
-    cd_x = hud_x + hud_width - cd_radius - 5
-    cd_y = sword_rain_y + item_height - cd_radius - 5
-    
-    # 绘制底层圆
-    pygame.draw.circle(surface, (30, 30, 30), (cd_x, cd_y), cd_radius)
-    
-    # 计算并绘制CD进度
-    cooldown = player.get_sword_rain_cooldown_percentage(current_time)
-    if cooldown < 1:
-        angle = (1 - cooldown) * 360  # 转换为角度
-        # 绘制扇形
-        pygame.draw.arc(surface, sword_colors[SWORD_RAIN],
-                      (cd_x - cd_radius, cd_y - cd_radius,
-                       cd_radius * 2, cd_radius * 2),
-                      math.radians(270), math.radians(270 + angle), cd_radius)
-    
-    # 绘制圆形边框
-    pygame.draw.circle(surface, sword_colors[SWORD_RAIN], (cd_x, cd_y), cd_radius, 2)
-    
-    # 显示剑雨状态
-    if sword_rain_attrs["damage"] <= 0:
-        status_text = font.render("Locked", True, (150, 150, 150))
-    elif cooldown < 1:
-        status_text = font.render("Cooling", True, (150, 150, 255))
-    else:
-        status_text = font.render("Ready", True, (100, 255, 100))
-    
-    status_x = hud_x + hud_width // 2 - status_text.get_width() // 2
-    status_y = sword_rain_y + item_height - status_text.get_height() - 5
-    surface.blit(status_text, (status_x, status_y))
 
 def reset_game():
     global armor, score, killed_monsters, game_over
@@ -978,8 +943,8 @@ def reset_game():
     
     # Create player with reset sword attributes
     player = Player()
-    # 确保剑雨技能初始为未解锁状态
-    player.sword_attributes[SWORD_RAIN]["damage"] = 0
+    # 确保初始只有普通剑可用
+    player.unlocked_sword_types = [NORMAL_SWORD]
     all_sprites.add(player)
     
     # Reset upgrade popup
