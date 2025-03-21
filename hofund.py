@@ -182,8 +182,10 @@ class Player(pygame.sprite.Sprite):
         # 计算射击角度
         dx = target.rect.centerx - self.rect.centerx
         dy = target.rect.centery - self.rect.centery
-        angle = math.degrees(math.atan2(-dy, dx))  # 使用负dy因为pygame的y轴向下
-        return angle
+        # 使用atan2计算角度，注意pygame的y轴向下为正
+        angle = math.degrees(math.atan2(dy, dx))
+        # 调整角度使飞剑朝向目标
+        return -angle  # 负号使飞剑朝向目标
     
     def shoot(self, current_time, all_sprites, swords, monsters):
         nearest_monster = self.find_nearest_monster(monsters)
@@ -292,18 +294,21 @@ class Sword(pygame.sprite.Sprite):
         
         # Create sword image based on type
         if sword_type == NORMAL_SWORD:
-            self.image = pygame.Surface((10, 30), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, WHITE, (0, 0, 10, 30))
+            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, WHITE, (0, 0, 30, 10))
         elif sword_type == ICE_SWORD:
-            self.image = pygame.Surface((10, 30), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, CYAN, (0, 0, 10, 30))
+            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, CYAN, (0, 0, 30, 10))
         elif sword_type == FIRE_SWORD:
-            self.image = pygame.Surface((10, 30), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, ORANGE, (0, 0, 10, 30))
+            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, ORANGE, (0, 0, 30, 10))
+        
+        # 保存原始图像
+        self.original_image = self.image
         
         # 旋转飞剑图像以匹配射击角度
-        self.original_image = self.image
-        self.image = pygame.transform.rotate(self.original_image, -angle)
+        # 注意：pygame的旋转是逆时针的，所以需要调整角度
+        self.image = pygame.transform.rotate(self.original_image, angle)
         self.rect = self.image.get_rect()
         self.rect.centerx = x
         self.rect.centery = y
