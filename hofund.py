@@ -294,14 +294,14 @@ class Sword(pygame.sprite.Sprite):
         
         # Create sword image based on type
         if sword_type == NORMAL_SWORD:
-            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, WHITE, (0, 0, 30, 10))
+            self.image = pygame.Surface((20, 5), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, WHITE, (0, 0, 20, 5))
         elif sword_type == ICE_SWORD:
-            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, CYAN, (0, 0, 30, 10))
+            self.image = pygame.Surface((20, 5), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, CYAN, (0, 0, 20, 5))
         elif sword_type == FIRE_SWORD:
-            self.image = pygame.Surface((30, 10), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, ORANGE, (0, 0, 30, 10))
+            self.image = pygame.Surface((20, 5), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, ORANGE, (0, 0, 20, 5))
         
         # 保存原始图像
         self.original_image = self.image
@@ -408,10 +408,11 @@ class SwordRain(pygame.sprite.Sprite):
             
             # 如果在范围内，造成伤害
             if distance <= self.radius:
-                monster.health -= self.damage
+                # 使用新的take_damage方法
+                monster_killed = monster.take_damage(self.damage)
                 
                 # 检查怪物是否被击败
-                if monster.health <= 0:
+                if monster_killed:
                     global score, killed_monsters, upgrade_popup
                     score += 10
                     
@@ -438,19 +439,22 @@ class Monster(pygame.sprite.Sprite):
         if monster_type == 0:  # Basic monster
             self.image = pygame.Surface((40, 40))
             self.image.fill(RED)
-            self.health = 40
+            self.max_health = 40
+            self.health = self.max_health
             self.speed = 0.5
             self.damage = 5
         elif monster_type == 1:  # Fast monster
             self.image = pygame.Surface((30, 30))
             self.image.fill(GREEN)
-            self.health = 30
+            self.max_health = 30
+            self.health = self.max_health
             self.speed = 0.8
             self.damage = 3
         elif monster_type == 2:  # Tank monster
             self.image = pygame.Surface((50, 50))
             self.image.fill(BLUE)
-            self.health = 80
+            self.max_health = 80
+            self.health = self.max_health
             self.speed = 0.3
             self.damage = 10
         
@@ -468,8 +472,28 @@ class Monster(pygame.sprite.Sprite):
         # Flag to check if monster is attacking
         self.attacking = False
         
+        # 受伤显示相关属性
+        self.damage_indicators = []  # 存储受伤显示信息
+        self.last_health = self.health  # 记录上一帧的生命值
+        
+    def take_damage(self, damage):
+        """处理受伤逻辑，返回是否死亡"""
+        self.last_health = self.health
+        self.health -= damage
+        
+        # 添加受伤显示
+        self.damage_indicators.append({
+            "damage": damage,
+            "time": pygame.time.get_ticks(),
+            "alpha": 255,
+            "y_offset": 0  # 用于上浮效果
+        })
+        
+        return self.health <= 0
+        
     def update(self):
         global armor
+        current_time = pygame.time.get_ticks()
         
         # If monster is attacking, reduce armor
         if self.attacking:
@@ -489,6 +513,63 @@ class Monster(pygame.sprite.Sprite):
             # Stop the monster exactly at the defense line
             self.rect.bottom = SCREEN_HEIGHT - DEFENSE_HEIGHT
             self.y_float = float(self.rect.y)
+            
+        # 更新受伤显示
+        for indicator in self.damage_indicators[:]:
+            # 计算存在时间（毫秒）
+            time_diff = current_time - indicator["time"]
+            if time_diff > 500:  # 0.5秒后移除
+                self.damage_indicators.remove(indicator)
+            else:
+                # 更新透明度和位置
+                indicator["alpha"] = 255 * (1 - time_diff / 500)  # 从255渐变到0
+                indicator["y_offset"] = -20 * (time_diff / 500)  # 向上飘动效果
+    
+    def draw_health_bar(self, surface):
+        """绘制血量条和受伤显示"""
+        # 健康条宽度和高度
+        bar_width = self.rect.width
+        bar_height = 5
+        
+        # 计算血量百分比和对应宽度
+        health_ratio = self.health / self.max_health
+        health_bar_width = int(bar_width * health_ratio)
+        
+        # 血量条位置（怪物头顶）
+        bar_x = self.rect.x
+        bar_y = self.rect.y - bar_height - 2
+        
+        # 绘制背景和前景
+        pygame.draw.rect(surface, (60, 60, 60), (bar_x, bar_y, bar_width, bar_height))
+        
+        # 根据血量比例选择颜色
+        if health_ratio > 0.7:
+            bar_color = (0, 255, 0)  # 绿色
+        elif health_ratio > 0.3:
+            bar_color = (255, 255, 0)  # 黄色
+        else:
+            bar_color = (255, 0, 0)  # 红色
+            
+        pygame.draw.rect(surface, bar_color, (bar_x, bar_y, health_bar_width, bar_height))
+        
+        # 绘制受伤显示
+        font = pygame.font.Font(None, 20)
+        for indicator in self.damage_indicators:
+            # 创建带透明度的文本
+            damage_text = font.render(f"-{indicator['damage']}", True, (255, 50, 50))
+            damage_text_surface = pygame.Surface(damage_text.get_size(), pygame.SRCALPHA)
+            damage_text_surface.fill((255, 255, 255, 0))  # 完全透明的背景
+            damage_text_surface.blit(damage_text, (0, 0))
+            
+            # 应用透明度
+            damage_text_surface.set_alpha(int(indicator["alpha"]))
+            
+            # 计算位置（怪物上方，随时间向上漂浮）
+            text_x = self.rect.centerx - damage_text.get_width() // 2
+            text_y = self.rect.y - 15 + indicator["y_offset"]
+            
+            # 绘制
+            surface.blit(damage_text_surface, (text_x, text_y))
 
 # Upgrade popup class
 class UpgradePopup:
@@ -776,16 +857,22 @@ def check_collisions(swords, monsters, upgrade_popup):
     for sword in swords:
         monsters_hit = pygame.sprite.spritecollide(sword, monsters, False)
         for monster in monsters_hit:
-            monster.health -= sword.damage
+            # 使用新的take_damage方法
+            damage = sword.damage
             
-            # Special effects based on sword type
+            # 特殊效果基于剑的类型
             if sword.sword_type == ICE_SWORD:
-                monster.speed *= 0.8  # Slow effect
-            elif sword.sword_type == FIRE_SWORD:
-                monster.health -= 5  # Extra damage
+                monster.speed *= 0.8  # 减速效果
             
-            # Check if monster is defeated
-            if monster.health <= 0:
+            # 额外伤害
+            if sword.sword_type == FIRE_SWORD:
+                damage += 5  # 额外伤害
+            
+            # 应用伤害
+            monster_killed = monster.take_damage(damage)
+            
+            # 检查怪物是否被击败
+            if monster_killed:
                 score += 10
                 
                 # 如果是正在攻击的怪物被击杀，给予额外分数
@@ -801,7 +888,7 @@ def check_collisions(swords, monsters, upgrade_popup):
                 killed_monsters += 1
                 monster.kill()
             
-            # Remove sword after hit
+            # 移除剑（命中后消失）
             sword.kill()
             break
 
@@ -1029,6 +1116,10 @@ while running:
     
     # Draw all sprites
     all_sprites.draw(screen)
+    
+    # 为每个怪物绘制血条和伤害指示器
+    for monster in monsters:
+        monster.draw_health_bar(screen)
     
     # Draw HUD
     draw_hud(screen)
